@@ -14,7 +14,7 @@ PENDING_USERS = {}
 CAPTCHA_OPTIONS = ["🧢", "💣", "🔫", "🍆"]
 CORRECT_ANSWER = "🍆"
 TIMEOUT_SECONDS = 60
-BAN_DURATION_SECONDS = 1800  # 30 минут
+BAN_DURATION_SECONDS = 1800
 
 async def on_user_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     member = update.chat_member
@@ -38,7 +38,6 @@ async def on_user_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='HTML'
         )
 
-        # Ограничиваем отправку сообщений до прохождения капчи
         await context.bot.restrict_chat_member(
             chat_id=chat_id,
             user_id=user_id,
@@ -52,7 +51,6 @@ async def on_user_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await asyncio.sleep(TIMEOUT_SECONDS)
 
-        # Если за 60 секунд пользователь не прошёл капчу – баним
         if user_id in PENDING_USERS:
             until = datetime.datetime.now() + datetime.timedelta(seconds=BAN_DURATION_SECONDS)
             await context.bot.ban_chat_member(chat_id=chat_id, user_id=user_id, until_date=until)
@@ -98,20 +96,10 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         del PENDING_USERS[user_id]
         await context.bot.send_message(chat_id=chat_id, text=f"❌ {from_user.first_name} не прошёл проверку на 🍆.\nОтдыхай 30 мин в бане, братан...")
 
-# Создаём приложение
-app = ApplicationBuilder().token(os.environ["BOT_TOKEN"]).build()
-app.add_handler(ChatMemberHandler(on_user_join, chat_member_types=["member"]))
-app.add_handler(CallbackQueryHandler(handle_button))
-
-async def main():
-    print("Бот стартует...")
-    await app.run_polling()
-
+# Создаём и запускаем приложение
 if __name__ == "__main__":
-    try:
-        # Создаём новый event loop и запускаем нашего бота
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(main())
-    except (KeyboardInterrupt, SystemExit):
-        pass
+    print("Бот стартует...")
+    app = ApplicationBuilder().token(os.environ["BOT_TOKEN"]).build()
+    app.add_handler(ChatMemberHandler(on_user_join, chat_member_types=["member"]))
+    app.add_handler(CallbackQueryHandler(handle_button))
+    app.run_polling()
