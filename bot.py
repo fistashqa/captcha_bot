@@ -103,3 +103,5 @@ if __name__ == "__main__":
     app.add_handler(ChatMemberHandler(on_user_join, chat_member_types=["member"]))
     app.add_handler(CallbackQueryHandler(handle_button))
     app.run_polling()
+    except Exception as e:
+        print(f"❌ Ошибка при запуске: {e}")
