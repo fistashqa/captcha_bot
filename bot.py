@@ -94,5 +94,11 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 app = ApplicationBuilder().token(os.environ["BOT_TOKEN"]).build()
 app.add_handler(ChatMemberHandler(on_user_join, chat_member_types=["member"]))
 app.add_handler(CallbackQueryHandler(handle_button))
-app.run_polling()
-print("Бот стартует...")
+
+async def main():
+    print("Бот стартует...")
+    await app.run_polling()
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
