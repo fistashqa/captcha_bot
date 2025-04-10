@@ -99,4 +99,10 @@ async def main():
     print("Бот стартует...")
     await app.run_polling()
 
-asyncio.get_event_loop().create_task(main())
+if __name__ == "__main__":
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
