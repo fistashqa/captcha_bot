@@ -99,6 +99,4 @@ async def main():
     print("Бот стартует...")
     await app.run_polling()
 
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
+asyncio.get_event_loop().create_task(main())
