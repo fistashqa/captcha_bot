@@ -121,11 +121,28 @@ async def captcha_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
         del pending_captcha[user_id]
 
 async def main():
+    if not TOKEN:
+        logger.error("BOT_TOKEN не задан!")
+        return
+
     application = Application.builder().token(TOKEN).build()
     application.add_handler(ChatMemberHandler(on_user_join, chat_member_types=["member"]))
     application.add_handler(CallbackQueryHandler(captcha_response, pattern=r"^captcha:\d+:.+"))
     logger.info("Бот стартует...")
-    await application.run_polling()
+
+    try:
+        await application.run_polling()
+    except Exception as e:
+        logger.error(f"Ошибка при запуске polling: {e}")
+    finally:
+        await application.stop()
+        logger.info("Бот остановлен.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Используем существующий цикл событий, если он есть
+    loop = asyncio.get_event_loop()
+    if loop.is_running():
+        loop.create_task(main())
+    else:
+        loop.run_until_complete(main())
+        
