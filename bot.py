@@ -2,7 +2,6 @@ import logging
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
 from telegram.ext import Application, ChatMemberHandler, CallbackQueryHandler, ContextTypes
 import os
-import asyncio
 from time import time
 
 # Настройка логирования
@@ -59,21 +58,24 @@ async def on_user_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         async def captcha_timeout():
-            await asyncio.sleep(CAPTCHA_TIMEOUT)
-            if user.id in pending_captcha:
-                try:
-                    await context.bot.ban_chat_member(
-                        chat_id=chat_id,
-                        user_id=user.id,
-                        until_date=int(time() + BAN_DURATION)
-                    )
-                    await context.bot.send_message(
-                        chat_id=chat_id,
-                        text=f"💥 {user.first_name} не прошёл капчу и был отправлен на 30 минут в гачи-тренажёрку."
-                    )
-                except Exception as e:
-                    logger.error(f"Ошибка бана {user.id}: {e}")
-                del pending_captcha[user.id]
+            try:
+                await asyncio.sleep(CAPTCHA_TIMEOUT)
+                if user.id in pending_captcha:
+                    try:
+                        await context.bot.ban_chat_member(
+                            chat_id=chat_id,
+                            user_id=user.id,
+                            until_date=int(time() + BAN_DURATION)
+                        )
+                        await context.bot.send_message(
+                            chat_id=chat_id,
+                            text=f"💥 {user.first_name} не прошёл капчу и был отправлен на 30 минут в гачи-тренажёрку."
+                        )
+                    except Exception as e:
+                        logger.error(f"Ошибка бана {user.id}: {e}")
+                    del pending_captcha[user.id]
+            except asyncio.CancelledError:
+                pass
 
         pending_captcha[user.id] = {
             "message_id": message.message_id,
@@ -123,9 +125,9 @@ async def captcha_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_id in pending_captcha:
         pending_captcha[user_id]["task"].cancel()
-        del pending_captcha[user_id]
+        del pending_captcha[user.id]
 
-async def main():
+def main():
     # Создаём приложение
     application = Application.builder().token(TOKEN).build()
 
@@ -134,11 +136,8 @@ async def main():
     application.add_handler(CallbackQueryHandler(captcha_response, pattern=r"^captcha:\d+:.+"))
     logger.info("Бот стартует...")
 
-    try:
-        await application.run_polling(allowed_updates=Update.ALL_TYPES)
-    except Exception as e:
-        logger.error(f"Ошибка при запуске polling: {e}")
-        raise
+    # Запускаем polling
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
