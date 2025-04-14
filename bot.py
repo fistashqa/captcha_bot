@@ -186,7 +186,9 @@ async def main():
 
 if __name__ == "__main__":
     # Запускаем в текущем событийном цикле
-    loop = asyncio.get_event_loop()
+    # loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
+    
     try:
         loop.run_until_complete(main())
     except RuntimeError as e:
