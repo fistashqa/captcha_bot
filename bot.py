@@ -5,21 +5,26 @@ import os
 import asyncio
 from time import time
 
-TOKEN = os.getenv("BOT_TOKEN")
+# Настройка логирования
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-pending_captcha = {}
+# Получение токена из переменной окружения
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    logger.error("BOT_TOKEN не задан! Завершаю работу.")
+    exit(1)
+
+# Константы капчи
 CAPTCHA_OPTIONS = ["🥩", "🍆", "💦", "🧼"]
 CORRECT_ANSWER = "🍆"
-CAPTCHA_TIMEOUT = 60
-BAN_DURATION = 30 * 60
+CAPTCHA_TIMEOUT = int(os.getenv("CAPTCHA_TIMEOUT", 60))
+BAN_DURATION = int(os.getenv("BAN_DURATION", 30 * 60))
+
+# Словарь для хранения данных капчи
+pending_captcha = {}
 
 async def on_user_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not TOKEN:
-        logger.error("BOT_TOKEN не задан!")
-        return
-
     chat_member = update.chat_member
     user = chat_member.new_chat_member.user
     chat_id = chat_member.chat.id
@@ -121,28 +126,19 @@ async def captcha_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
         del pending_captcha[user_id]
 
 async def main():
-    if not TOKEN:
-        logger.error("BOT_TOKEN не задан!")
-        return
-
+    # Создаём приложение
     application = Application.builder().token(TOKEN).build()
+
+    # Добавляем обработчики
     application.add_handler(ChatMemberHandler(on_user_join, chat_member_types=["member"]))
     application.add_handler(CallbackQueryHandler(captcha_response, pattern=r"^captcha:\d+:.+"))
     logger.info("Бот стартует...")
 
     try:
-        await application.run_polling()
+        await application.run_polling(allowed_updates=Update.ALL_TYPES)
     except Exception as e:
         logger.error(f"Ошибка при запуске polling: {e}")
-    finally:
-        await application.stop()
-        logger.info("Бот остановлен.")
+        raise
 
 if __name__ == "__main__":
-    # Используем существующий цикл событий, если он есть
-    loop = asyncio.get_event_loop()
-    if loop.is_running():
-        loop.create_task(main())
-    else:
-        loop.run_until_complete(main())
-        
+    asyncio.run(main())
