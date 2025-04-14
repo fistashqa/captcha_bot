@@ -1,81 +1,83 @@
+import logging
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
+from telegram.ext import Application, ChatMemberHandler, CallbackQueryHandler, ContextTypes
 import os
 import asyncio
-import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatPermissions
-from telegram.ext import (
-    ApplicationBuilder, 
-    CallbackQueryHandler, 
-    ChatMemberHandler, 
-    ContextTypes
-)
 
-PENDING_USERS = {}
+TOKEN = os.getenv("BOT_TOKEN")  # На Railway нужно выставить переменную окружения BOT_TOKEN
 
-CAPTCHA_OPTIONS = ["🧢", "💣", "🔫", "🍆"]
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Запоминаем пользователей, ожидающих капчу
+pending_captcha = {}
+
+CAPTCHA_OPTIONS = ["🥩", "🍆", "💦", "🧼"]
 CORRECT_ANSWER = "🍆"
-TIMEOUT_SECONDS = 60
-BAN_DURATION_SECONDS = 1800
+CAPTCHA_TIMEOUT = 60  # секунд
+BAN_DURATION = 30 * 60  # 30 минут
 
 async def on_user_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    member = update.chat_member
-    if member.new_chat_member.status == "member":
-        user_id = member.new_chat_member.user.id
-        chat_id = member.chat.id
+    chat_member = update.chat_member
+    user = chat_member.new_chat_member.user
+    chat_id = chat_member.chat.id
 
-        keyboard = [
-            [InlineKeyboardButton(emoji, callback_data=f"{user_id}:{emoji}") for emoji in CAPTCHA_OPTIONS[:2]],
-            [InlineKeyboardButton(emoji, callback_data=f"{user_id}:{emoji}") for emoji in CAPTCHA_OPTIONS[2:]],
-        ]
+    if chat_member.old_chat_member.status in ("left", "kicked") and chat_member.new_chat_member.status == "member":
+        logger.info(f"{user.full_name} зашел в чат {chat_id}")
 
-        msg = await context.bot.send_message(
-            chat_id=chat_id,
-            text=(
-                f"🚪 {member.new_chat_member.user.mention_html()} ворвался в чат!\n\n"
-                f"🧠 Чтобы доказать, что ты не ботяра сильвер — нажми на 🍆.\n"
-                f"У тебя 60 секунд, бро..."
-            ),
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode='HTML'
-        )
-
+        # Блокируем отправку сообщений
         await context.bot.restrict_chat_member(
             chat_id=chat_id,
-            user_id=user_id,
+            user_id=user.id,
             permissions=ChatPermissions(can_send_messages=False)
         )
 
-        PENDING_USERS[user_id] = {
-            "chat_id": chat_id,
-            "message_id": msg.message_id
+        # Кнопочная капча
+        keyboard = InlineKeyboardMarkup.from_column([
+            InlineKeyboardButton(text=opt, callback_data=f"captcha:{user.id}:{opt}")
+            for opt in CAPTCHA_OPTIONS
+        ])
+
+        message = await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"🕹️ {user.first_name}, Чтобы доказать, что ты не ботяра сильвер — нажми на 🍆.\n"
+                 f"Выбери правильный предмет, иначе улетишь *в баню* попариться!",
+            reply_markup=keyboard,
+        )
+
+        # Сохраняем ID сообщения и пользователя
+        pending_captcha[user.id] = {
+            "message_id": message.message_id,
+            "chat_id": chat_id
         }
 
-        await asyncio.sleep(TIMEOUT_SECONDS)
+        # Таймер на авто-бан
+        await asyncio.sleep(CAPTCHA_TIMEOUT)
 
-        if user_id in PENDING_USERS:
-            until = datetime.datetime.now() + datetime.timedelta(seconds=BAN_DURATION_SECONDS)
-            await context.bot.ban_chat_member(chat_id=chat_id, user_id=user_id, until_date=until)
-            await context.bot.delete_message(chat_id=chat_id, message_id=msg.message_id)
-            del PENDING_USERS[user_id]
+        # Если не прошёл капчу за время — бан
+        if user.id in pending_captcha:
+            await context.bot.ban_chat_member(chat_id=chat_id, user_id=user.id, until_date=asyncio.get_event_loop().time() + BAN_DURATION)
+            await context.bot.send_message(chat_id=chat_id, text=f"💥 {user.first_name} не прошёл капчу и был отправлен на 30 минут в гачи-тренажёрку.")
+            del pending_captcha[user.id]
 
-async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def captcha_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user_id_str, choice = query.data.split(":")
+
+    data = query.data.split(":")
+    if len(data) != 3:
+        return
+
+    _, user_id_str, selected = data
     user_id = int(user_id_str)
-    from_user = query.from_user
 
-    if from_user.id != user_id:
-        await query.answer("🛑 Братишка, не трогай чужую 🍆!", show_alert=True)
+    if query.from_user.id != user_id:
+        await query.edit_message_text("братишка, я понимаю что очень хочется, но не трогай чужую 🍆")
         return
 
-    data = PENDING_USERS.get(user_id)
-    if not data:
-        return
+    chat_id = query.message.chat.id
 
-    chat_id = data["chat_id"]
-    msg_id = data["message_id"]
-
-    if choice == CORRECT_ANSWER:
+    if selected == CORRECT_ANSWER:
         await context.bot.restrict_chat_member(
             chat_id=chat_id,
             user_id=user_id,
@@ -83,26 +85,27 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 can_send_messages=True,
                 can_send_media_messages=True,
                 can_send_other_messages=True,
-                can_add_web_page_previews=True
+                can_add_web_page_previews=True,
             )
         )
-        await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
-        del PENDING_USERS[user_id]
-        await context.bot.send_message(chat_id=chat_id, text=f"✅ {from_user.first_name} прошёл капчу! Welcome, боец 🔫")
+        await query.edit_message_text("✅ Верно! прошёл капчу! Welcome, боец 🔫")
     else:
-        until = datetime.datetime.now() + datetime.timedelta(seconds=BAN_DURATION_SECONDS)
-        await context.bot.ban_chat_member(chat_id=chat_id, user_id=user_id, until_date=until)
-        await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
-        del PENDING_USERS[user_id]
-        await context.bot.send_message(chat_id=chat_id, text=f"❌ {from_user.first_name} не прошёл проверку на 🍆.\nОтдыхай 30 мин в бане, братан...")
+        await context.bot.ban_chat_member(chat_id=chat_id, user_id=user_id, until_date=asyncio.get_event_loop().time() + BAN_DURATION)
+        await query.edit_message_text("🚫 Мимо бро, зачилься на пол часика...")
 
-# Создаём и запускаем приложение
+    if user_id in pending_captcha:
+        del pending_captcha[user_id]
+
+async def main():
+    application = Application.builder().token(TOKEN).build()
+
+    # Хэндлеры
+    application.add_handler(ChatMemberHandler(on_user_join, chat_member_types=["member"]))
+    application.add_handler(CallbackQueryHandler(captcha_response, pattern=r"^captcha:\d+:.+"))
+
+    logger.info("Бот стартует...")
+    await application.run_polling()
+
 if __name__ == "__main__":
-    print("Бот стартует...")
-    try:
-        app = ApplicationBuilder().token(os.environ["BOT_TOKEN"]).build()
-        app.add_handler(ChatMemberHandler(on_user_join, chat_member_types=["member"]))
-        app.add_handler(CallbackQueryHandler(handle_button))
-        app.run_polling()
-    except Exception as e:
-        print(f"❌ Ошибка при запуске: {e}")
+    import asyncio
+    asyncio.run(main())
