@@ -172,12 +172,28 @@ async def main():
         return
 
     logger.info("Бот стартует в режиме вебхука...")
-    await application.run_webhook(
+    # Запускаем вебхук без asyncio.run
+    await application.initialize()
+    await application.start()
+    await application.updater.start_webhook(
         listen="0.0.0.0",
         port=PORT,
         url_path="/webhook",
         webhook_url=WEBHOOK_URL
     )
+    # Держим приложение запущенным
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # Запускаем в текущем событийном цикле
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(main())
+    except RuntimeError as e:
+        if "This event loop is already running" in str(e):
+            # Если цикл уже запущен, просто выполняем задачу
+            loop.create_task(main())
+            loop.run_forever()
+    finally:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
