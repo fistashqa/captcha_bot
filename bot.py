@@ -99,9 +99,10 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Создаём и запускаем приложение
 if __name__ == "__main__":
     print("Бот стартует...")
-    app = ApplicationBuilder().token(os.environ["BOT_TOKEN"]).build()
-    app.add_handler(ChatMemberHandler(on_user_join, chat_member_types=["member"]))
-    app.add_handler(CallbackQueryHandler(handle_button))
-    app.run_polling()
+    try:
+        app = ApplicationBuilder().token(os.environ["BOT_TOKEN"]).build()
+        app.add_handler(ChatMemberHandler(on_user_join, chat_member_types=["member"]))
+        app.add_handler(CallbackQueryHandler(handle_button))
+        app.run_polling()
     except Exception as e:
         print(f"❌ Ошибка при запуске: {e}")
