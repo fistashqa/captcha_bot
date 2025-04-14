@@ -185,16 +185,10 @@ async def main():
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    # Запускаем в текущем событийном цикле
-    # loop = asyncio.get_event_loop()
-    loop = asyncio.get_running_loop()
-    
     try:
-        loop.run_until_complete(main())
-    except RuntimeError as e:
-        if "This event loop is already running" in str(e):
-            # Если цикл уже запущен, просто выполняем задачу
-            loop.create_task(main())
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Бот завершил работу")
             loop.run_forever()
     finally:
         loop.run_until_complete(loop.shutdown_asyncgens())
