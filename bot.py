@@ -134,7 +134,7 @@ async def captcha_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_id in pending_captcha:
         pending_captcha[user_id]["task"].cancel()
-        del pending_captcha[user.id]
+        del pending_captcha[user_id]  # Исправлено: user_id вместо user.id
 
 async def set_webhook_with_retry(bot, webhook_url, max_attempts=5):
     attempt = 0
@@ -172,20 +172,41 @@ async def main():
         return
 
     logger.info("Бот стартует в режиме вебхука...")
-    # Запускаем вебхук без asyncio.run
-    await application.initialize()
-    await application.start()
-    await application.updater.start_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path="/webhook",
-        webhook_url=WEBHOOK_URL
-    )
-    # Держим приложение запущенным
-    await asyncio.Event().wait()
+    try:
+        await application.initialize()
+        await application.start()
+        await application.updater.start_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path="/webhook",
+            webhook_url=WEBHOOK_URL
+        )
+        logger.info("Бот полностью запущен и ожидает обновления")
+        # Бесконечное ожидание для поддержания работы
+        await asyncio.Event().wait()
+    except asyncio.CancelledError:
+        logger.info("Получен сигнал завершения, останавливаю бота...")
+    except Exception as e:
+        logger.error(f"Ошибка при запуске бота: {e}")
+    finally:
+        logger.info("Останавливаю приложение...")
+        await application.stop()
+        await application.shutdown()
 
 if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
     try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Бот завершил работу")
+        loop.run_until_complete(main())
+    except RuntimeError as e:
+        if "This event loop is already running" in str(e):
+            logger.info("Событийный цикл уже запущен, добавляю задачу...")
+            loop.create_task(main())
+            loop.run_forever()
+        else:
+            raise
+    except KeyboardInterrupt:
+        logger.info("Получен сигнал завершения программы")
+    finally:
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
+        logger.info("Событийный цикл завершён")
