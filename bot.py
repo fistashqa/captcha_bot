@@ -1,6 +1,7 @@
 import logging
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
 from telegram.ext import Application, ChatMemberHandler, CallbackQueryHandler, ContextTypes
+from telegram.request import HTTPXRequest
 import os
 from time import time
 
@@ -8,7 +9,7 @@ from time import time
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Получение токена из переменной окружения
+# Получение токена
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     logger.error("BOT_TOKEN не задан! Завершаю работу.")
@@ -128,8 +129,17 @@ async def captcha_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
         del pending_captcha[user.id]
 
 def main():
+    # Настройка HTTP-клиента с увеличенным таймаутом и повторными попытками
+    request = HTTPXRequest(
+        connection_pool_size=10,
+        read_timeout=30.0,  # Увеличенный таймаут
+        connect_timeout=30.0,
+        pool_timeout=30.0,
+        http_version="1.1"
+    )
+
     # Создаём приложение
-    application = Application.builder().token(TOKEN).build()
+    application = Application.builder().token(TOKEN).request(request).build()
 
     # Добавляем обработчики
     application.add_handler(ChatMemberHandler(on_user_join, chat_member_types=["member"]))
@@ -137,7 +147,7 @@ def main():
     logger.info("Бот стартует...")
 
     # Запускаем polling
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    application.run_polling(allowed_updates=Update.ALL_TYPES, close_loop=False)
 
 if __name__ == "__main__":
     main()
