@@ -134,7 +134,7 @@ async def captcha_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_id in pending_captcha:
         pending_captcha[user_id]["task"].cancel()
-        del pending_captcha[user_id]  # Исправлено: user_id вместо user.id
+        del pending_captcha[user_id]
 
 async def set_webhook_with_retry(bot, webhook_url, max_attempts=5):
     attempt = 0
@@ -188,13 +188,16 @@ async def main():
         logger.info("Получен сигнал завершения, останавливаю бота...")
     except Exception as e:
         logger.error(f"Ошибка при запуске бота: {e}")
+        raise
     finally:
         logger.info("Останавливаю приложение...")
         await application.stop()
         await application.shutdown()
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
+    # Используем new_event_loop вместо get_event_loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(main())
     except RuntimeError as e:
