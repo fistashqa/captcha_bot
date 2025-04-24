@@ -35,8 +35,8 @@ def health_check():
 
 @app.route(f"/{SECRET_PATH}", methods=["POST"])
 def webhook():
-    update = Update.de_json(request.get_json(force=True), bot.application.bot)
-    asyncio.run(bot.application.process_update(update))
+    update = Update.de_json(request.get_json(force=True), bot.bot)
+    asyncio.run(bot.process_update(update))  # Заменил на правильный вызов
     return "OK"
 
 # Капча при входе
