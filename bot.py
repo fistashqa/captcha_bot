@@ -3,9 +3,7 @@ import os
 import asyncio
 import threading
 from time import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from flask import Flask
-
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
 from telegram.ext import Application, ChatMemberHandler, CallbackQueryHandler, ContextTypes
 from telegram.request import HTTPXRequest
@@ -17,7 +15,6 @@ CORRECT_ANSWER = "🍆"
 CAPTCHA_TIMEOUT = int(os.getenv("CAPTCHA_TIMEOUT", 60))
 BAN_DURATION = int(os.getenv("BAN_DURATION", 30 * 60))
 
-# Проверка переменных
 if not TOKEN:
     raise RuntimeError("BOT_TOKEN не задан!")
 
@@ -27,19 +24,7 @@ logger = logging.getLogger(__name__)
 
 pending_captcha = {}
 
-# Заглушка HTTP-сервера для Render health check
-def run_fake_server():
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b'Bot is alive.')
-    server = HTTPServer(("0.0.0.0", 10000), Handler)
-    server.serve_forever()
-
-threading.Thread(target=run_fake_server, daemon=True).start()
-
-# Flask для привязки к порту
+# Flask для health check
 app = Flask(__name__)
 
 @app.route('/')
@@ -61,7 +46,7 @@ async def on_user_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
             permissions=ChatPermissions(can_send_messages=False)
         )
 
-        keyboard = InlineKeyboardMarkup.from_column([  
+        keyboard = InlineKeyboardMarkup.from_column([
             InlineKeyboardButton(text=opt, callback_data=f"captcha:{user.id}:{opt}")
             for opt in CAPTCHA_OPTIONS
         ])
@@ -126,8 +111,7 @@ async def main():
     await application.start()
     logger.info("Бот запущен")
 
-    # Отправка сообщения в чат группы, что бот готов к работе
-    chat_id = os.getenv("CHAT_ID")  # Убедитесь, что переменная CHAT_ID установлена
+    chat_id = os.getenv("CHAT_ID")
     if chat_id:
         await application.bot.send_message(chat_id=chat_id, text="Папа в деле 😎")
 
@@ -135,7 +119,6 @@ async def main():
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    # Запускаем Flask для Render health check
-    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000))), daemon=True).start()
-    
+    # Запускаем Flask на порту, который задаётся переменной PORT (по умолчанию 5000)
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000))), daemon=True).start()
     asyncio.run(main())
