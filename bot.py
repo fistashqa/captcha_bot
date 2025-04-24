@@ -1,22 +1,23 @@
 import logging
 import os
 import asyncio
-import threading
 from time import time
-from flask import Flask
+from flask import Flask, request
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
 from telegram.ext import Application, ChatMemberHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import ApplicationBuilder
 from telegram.request import HTTPXRequest
 
 # Константы
 TOKEN = os.getenv("BOT_TOKEN")
-CAPTCHA_OPTIONS = ["🥩", "🍆", "💦", "🧼"]
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # В формате https://yourdomain.com/<secret_path>
+CAPTCHA_OPTIONS = ["🥩", "🍆", "💦", "🧬"]
 CORRECT_ANSWER = "🍆"
 CAPTCHA_TIMEOUT = int(os.getenv("CAPTCHA_TIMEOUT", 60))
 BAN_DURATION = int(os.getenv("BAN_DURATION", 30 * 60))
 
-if not TOKEN:
-    raise RuntimeError("BOT_TOKEN не задан!")
+if not TOKEN or not WEBHOOK_URL:
+    raise RuntimeError("BOT_TOKEN и/или WEBHOOK_URL не заданы!")
 
 # Логирование
 logging.basicConfig(level=logging.INFO)
@@ -24,12 +25,17 @@ logger = logging.getLogger(__name__)
 
 pending_captcha = {}
 
-# Flask для health check
 app = Flask(__name__)
 
 @app.route('/')
 def health_check():
     return 'Bot is alive!'
+
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    update = Update.de_json(request.get_json(force=True), bot.application.bot)
+    asyncio.run(bot.application.process_update(update))
+    return "OK"
 
 # Капча при входе
 async def on_user_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -53,7 +59,7 @@ async def on_user_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         message = await context.bot.send_message(
             chat_id=chat_id,
-            text=f"🕹️ {user.first_name}, Нажми на 🍆, иначе 30 мин в бан.",
+            text=f"🔹 {user.first_name}, Нажми на 🍆, иначе 30 мин в бан.",
             reply_markup=keyboard,
         )
 
@@ -94,31 +100,26 @@ async def captcha_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("✅ Принят!")
     else:
         await context.bot.ban_chat_member(chat_id, user_id, until_date=int(time() + BAN_DURATION))
-        await query.edit_message_text("🚫 Мимо. Отдыхай 30 минут.")
+        await query.edit_message_text("❌ Мимо. Отдыхай 30 минут.")
 
     if user_id in pending_captcha:
         pending_captcha[user_id]["task"].cancel()
         del pending_captcha[user_id]
 
-# Запуск polling
-async def main():
+# Запуск приложения и настройка webhook
+async def setup():
     request = HTTPXRequest()
-    application = Application.builder().token(TOKEN).request(request).build()
-    application.add_handler(ChatMemberHandler(on_user_join, chat_member_types=["member"]))
-    application.add_handler(CallbackQueryHandler(captcha_response, pattern=r"^captcha:\d+:.+"))
+    global bot
+    bot = ApplicationBuilder().token(TOKEN).request(request).build()
 
-    await application.initialize()
-    await application.start()
-    logger.info("Бот запущен")
+    bot.add_handler(ChatMemberHandler(on_user_join, chat_member_types=["member"]))
+    bot.add_handler(CallbackQueryHandler(captcha_response, pattern=r"^captcha:\d+:.+"))
 
-    chat_id = os.getenv("CHAT_ID")
-    if chat_id:
-        await application.bot.send_message(chat_id=chat_id, text="Папа в деле 😎")
-
-    await application.updater.start_polling()
-    await asyncio.Event().wait()
+    await bot.initialize()
+    await bot.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
+    await bot.start()
+    logger.info("Webhook установлен и бот запущен")
 
 if __name__ == "__main__":
-    # Запускаем Flask на порту, который задаётся переменной PORT (по умолчанию 5000)
-    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000))), daemon=True).start()
-    asyncio.run(main())
+    asyncio.run(setup())
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
