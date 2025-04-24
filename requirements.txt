@@ -1,5 +1,4 @@
-python-telegram-bot==20.1
-pyTelegramBotCAPTCHA==0.1.5
+python-telegram-bot==20.7
 Flask==2.3.2
-Werkzeug>=2.3.3
-requests
+Werkzeug==2.3.8
+requests==2.31.0
