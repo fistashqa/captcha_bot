@@ -4,6 +4,7 @@ import asyncio
 import threading
 from time import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from flask import Flask
 
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
 from telegram.ext import Application, ChatMemberHandler, CallbackQueryHandler, ContextTypes
@@ -38,6 +39,13 @@ def run_fake_server():
 
 threading.Thread(target=run_fake_server, daemon=True).start()
 
+# Flask для привязки к порту
+app = Flask(__name__)
+
+@app.route('/')
+def health_check():
+    return 'Bot is alive!'
+
 # Капча при входе
 async def on_user_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_member = update.chat_member
@@ -53,7 +61,7 @@ async def on_user_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
             permissions=ChatPermissions(can_send_messages=False)
         )
 
-        keyboard = InlineKeyboardMarkup.from_column([
+        keyboard = InlineKeyboardMarkup.from_column([  
             InlineKeyboardButton(text=opt, callback_data=f"captcha:{user.id}:{opt}")
             for opt in CAPTCHA_OPTIONS
         ])
@@ -121,4 +129,7 @@ async def main():
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
+    # Запускаем Flask для Render health check
+    threading.Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.getenv("PORT", 10000))), daemon=True).start()
+    
     asyncio.run(main())
