@@ -125,6 +125,12 @@ async def main():
     await application.initialize()
     await application.start()
     logger.info("Бот запущен")
+
+    # Отправка сообщения в чат группы, что бот готов к работе
+    chat_id = os.getenv("CHAT_ID")  # Убедитесь, что переменная CHAT_ID установлена
+    if chat_id:
+        await application.bot.send_message(chat_id=chat_id, text="Папа в деле 😎")
+
     await application.updater.start_polling()
     await asyncio.Event().wait()
 
