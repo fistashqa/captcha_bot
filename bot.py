@@ -11,13 +11,15 @@ from telegram.request import HTTPXRequest
 # Константы
 TOKEN = os.getenv("BOT_TOKEN")
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")  # В формате https://yourdomain.com/<secret_path>
+SECRET_PATH = os.getenv("SECRET_PATH")  # Секретный путь для webhook
 CAPTCHA_OPTIONS = ["🥩", "🍆", "💦", "🧬"]
 CORRECT_ANSWER = "🍆"
 CAPTCHA_TIMEOUT = int(os.getenv("CAPTCHA_TIMEOUT", 60))
 BAN_DURATION = int(os.getenv("BAN_DURATION", 30 * 60))
+GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID")  # ID группы для отправки сообщения
 
-if not TOKEN or not WEBHOOK_URL:
-    raise RuntimeError("BOT_TOKEN и/или WEBHOOK_URL не заданы!")
+if not TOKEN or not WEBHOOK_URL or not SECRET_PATH or not GROUP_CHAT_ID:
+    raise RuntimeError("BOT_TOKEN, WEBHOOK_URL, SECRET_PATH и/или GROUP_CHAT_ID не заданы!")
 
 # Логирование
 logging.basicConfig(level=logging.INFO)
@@ -31,7 +33,7 @@ app = Flask(__name__)
 def health_check():
     return 'Bot is alive!'
 
-@app.route(f"/{TOKEN}", methods=["POST"])
+@app.route(f"/{SECRET_PATH}", methods=["POST"])
 def webhook():
     update = Update.de_json(request.get_json(force=True), bot.application.bot)
     asyncio.run(bot.application.process_update(update))
@@ -52,7 +54,7 @@ async def on_user_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
             permissions=ChatPermissions(can_send_messages=False)
         )
 
-        keyboard = InlineKeyboardMarkup.from_column([
+        keyboard = InlineKeyboardMarkup.from_column([ 
             InlineKeyboardButton(text=opt, callback_data=f"captcha:{user.id}:{opt}")
             for opt in CAPTCHA_OPTIONS
         ])
@@ -104,7 +106,7 @@ async def captcha_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_id in pending_captcha:
         pending_captcha[user_id]["task"].cancel()
-        del pending_captcha[user_id]
+        del pending_captcha[user.id]
 
 # Запуск приложения и настройка webhook
 async def setup():
@@ -116,9 +118,12 @@ async def setup():
     bot.add_handler(CallbackQueryHandler(captcha_response, pattern=r"^captcha:\d+:.+"))
 
     await bot.initialize()
-    await bot.bot.set_webhook(url=f"{WEBHOOK_URL}/{TOKEN}")
+    await bot.bot.set_webhook(url=f"{WEBHOOK_URL}/{SECRET_PATH}")
     await bot.start()
     logger.info("Webhook установлен и бот запущен")
+
+    # Отправка сообщения в чат группы
+    await bot.bot.send_message(GROUP_CHAT_ID, "Папа в деле 😎")
 
 if __name__ == "__main__":
     asyncio.run(setup())
